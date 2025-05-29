@@ -1,0 +1,116 @@
+#########################################################################
+# Workflow Name : npm
+# Description : Install and publish npm packages, or run an npm command."
+# Version : v1
+#########################################################################
+
+name: npm reusable workflow 
+description: npm action testing
+
+inputs:
+  command:
+    description: 'Specifies the NPM command to be executed. Examples: "install" for installing dependencies'
+    required: true
+    type: string
+  workingDir:
+    description: 'Specifies the working directory where the NPM commands will be executed'
+    required: true
+    type: string
+  verbose:
+    description: 'Enables verbose output for NPM commands when set to true. Useful for debugging or detailed logging'
+    required: false
+    type: boolean
+  customCommand:
+    description: 'Specifies a custom NPM command to be executed. This input is mandatory when the command input is set to "custom".'
+    required: false
+    type: string
+  customRegistry:
+    description: 'Specifies a custom NPM registry URL. If provided, this registry will be configured in the .npmrc file before executing commands'
+    required: false
+    type: string
+  nexus_username:
+    description: 'Nexus username'
+    required: true
+    type: string
+  nexus_password:
+    description: 'Nexus password'
+    required: true
+    type: string  
+
+runs:
+  using: 'composite'
+  steps:     
+    - name: Display Nexus Username and Password
+      shell: pwsh
+      run: |
+        Write-Host "Nexus Username: ${{ inputs.nexus_username }}"
+        Write-Host "Nexus Password: ${{ inputs.nexus_password }}"
+      
+    - name: NPM Task Header
+      shell: pwsh
+      run: |
+        # Task Header
+        Write-Host "======================================================================="
+        Write-Host "Task        : npm"
+        Write-Host "Description : Install and publish npm packages, or run an npm command."
+        Write-Host "Version     : v1"
+        Write-Host "======================================================================="
+        
+    - name: Configure NPM for Custom Registry
+      if: ${{ inputs.customRegistry != '' }}
+      shell: pwsh
+      run: |
+        try {
+            # Set the custom registry URL
+            Write-Host "Setting NPM registry to ${{ inputs.customRegistry }}"
+            npm config set registry="${{ inputs.customRegistry }}"
+    
+            # Set the username and password for the registry
+            Write-Host "Setting username and password for ${{ inputs.customRegistry }}"
+        
+            # Display the current NPM configuration
+            npm config ls
+            Write-Host "NPM configuration completed successfully."
+        } catch {
+            Write-Error "An error occurred while configuring NPM: $_"
+            exit 1
+        }
+
+  
+    - name: Run NPM or Custom Command
+      shell: pwsh
+      working-directory: ${{ inputs.workingDir }}
+      run: |
+        try {      
+          # Validate command is allowed
+          $allowedCommands = @("custom", "install", "ci", "publish")
+          $inputCommand = "${{ inputs.command }}".Trim()
+          $inputcustomCommand = "${{ inputs.customCommand }}".Trim()
+          if (-not $allowedCommands.Contains($inputCommand)) {
+            Write-Error "Error: Invalid command '$inputCommand'. Allowed commands are: custom, install, ci, publish."
+            exit 1
+          }
+    
+          # Prepare the actual npm command
+          if ("${{ inputs.command }}" -eq "custom") {
+            if ([string]::IsNullOrEmpty($inputcustomCommand)) {
+              Write-Error "Error: customCommand input is required when command is 'custom'"
+              exit 1
+            }
+            $cmd = $inputCustomCommand
+          } else {
+            $cmd = $inputCommand
+          }
+    
+          # Add verbose flag if needed
+          if ("${{ inputs.verbose }}" -eq "true") {
+            $cmd += " --verbose"
+          } 
+    
+          # Finally, run the command
+          Write-Host "Running command: npm $cmd"
+          Invoke-Expression "npm $cmd"
+        } catch {
+          Write-Error "An error occurred while executing the npm logic: $_"
+          exit 1
+        }
