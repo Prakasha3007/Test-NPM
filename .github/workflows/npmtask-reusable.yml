@@ -1,0 +1,152 @@
+#########################################################################
+# Workflow Name : npm
+# Description : Install and publish npm packages, or run an npm command."
+# Version : v1
+#########################################################################
+
+name: npm reusable
+
+on:
+  workflow_call:
+    secrets:
+      nexus_username:
+        description: 'Nexus Auth nexus_username'
+        required: true
+      nexus_password:
+        description: 'Nexus Auth nexus_password'
+        required: true
+    inputs:
+      runsOn:
+        description: 'Specifies the runner to be used (e.g., windows-latest, ubuntu-latest)'
+        required: true
+        type: string
+      command:
+        description: 'Specifies the NPM command to be executed. Examples: "install" for installing dependencies'
+        required: true
+        type: string
+      workingDir:
+        description: 'Specifies the working directory where the NPM commands will be executed'
+        required: true
+        type: string
+      verbose:
+        description: 'Enables verbose output for NPM commands when set to true. Useful for debugging or detailed logging'
+        required: false
+        type: boolean
+      customCommand:
+        description: 'Specifies a custom NPM command to be executed. This input is mandatory when the command input is set to "custom".'
+        required: false
+        type: string
+      customRegistry:
+        description: 'Specifies a custom NPM registry URL. If provided, this registry will be configured in the .npmrc file before executing commands'
+        required: false
+        type: string
+
+jobs:
+  npm-task:
+    runs-on: ${{ inputs.runsOn }}
+
+    defaults:
+     run:
+       working-directory: ${{ inputs.workingDir }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4  
+        
+      - name: NPM Task Header
+        run: |
+            # Task Header
+            Write-Host "======================================================================="
+            Write-Host "Task        : npm"
+            Write-Host "Description : Install and publish npm packages, or run an npm command."
+            Write-Host "Version     : v1"
+            Write-Host "======================================================================="
+            
+        #- name: Configure Custom Registry
+        #if: ${{ inputs.customRegistry != '' }}
+        #shell: pwsh
+        #run: |
+        #  try {
+        #    Add-Content -Path .npmrc -Value "registry=${{ inputs.customRegistry }}"
+        #    Write-Host "Custom registry configured: ${{ inputs.customRegistry }}"
+        #  } catch {
+        #    Write-Error "Failed to configure custom registry: $_"
+        #    exit 1
+        #  }
+
+        # Configure NPM for Custom Registry using PowerShell
+      - name: Configure NPM for Custom Registry
+        if: ${{ inputs.customRegistry != '' }}
+        shell: pwsh
+        run: |
+          try {
+              # Set the custom registry URL
+              Write-Host "Setting NPM registry to ${{ inputs.customRegistry }}"
+              npm config set registry="${{ inputs.customRegistry }}"
+
+              # Set the username and password for the registry
+              Write-Host "Setting username and password for ${{ inputs.customRegistry }}"
+              #npm config set //${{ inputs.customRegistry }}/:username=${{ secrets.nexus_username }}
+              #npm config set //${{ inputs.customRegistry }}/:password=${{ secrets.nexus_password }}
+      
+              # Display the current NPM configuration
+              npm config ls
+              Write-Host "NPM configuration completed successfully."
+            
+          } catch {
+              Write-Error "An error occurred while configuring NPM: $_"
+              exit 1
+          }
+      
+      - name: Install Dependencies
+        run: npm install
+        shell: pwsh
+
+      - name: Get npm package version
+        run: npm run env | grep npm_package_version   
+
+      - name: Verify npm Installation
+        run: npm --version
+ 
+      - name: Run NPM or Custom Command
+        shell: pwsh
+        run: |
+          try {      
+            # Validate command is allowed
+            $allowedCommands = @("custom", "install", "ci", "publish")
+            $inputCommand = "${{ inputs.command }}".Trim()
+            $inputcustomCommand = "${{ inputs.customCommand }}".Trim()
+            if (-not $allowedCommands.Contains($inputCommand)) {
+              Write-Error "Error: Invalid command '$inputCommand'. Allowed commands are: custom, install, ci, publish."
+              exit 1
+            }
+      
+            # Prepare the actual npm command
+            if ("${{ inputs.command }}" -eq "custom") {
+              if ([string]::IsNullOrEmpty($inputcustomCommand)) {
+                Write-Error "Error: customCommand input is required when command is 'custom'"
+                exit 1
+              }
+              $cmd = $inputCustomCommand
+            } else {
+              $cmd = $inputCommand
+            }
+      
+            # Add verbose flag if needed
+            if ("${{ inputs.verbose }}" -eq "true") {
+              $cmd += " --verbose"
+            } 
+      
+            # Finally, run the command
+            Write-Host "Running command: npm $cmd"
+            Invoke-Expression "npm $cmd"
+          } catch {
+            Write-Error "An error occurred while executing the npm logic: $_"
+            exit 1
+          }
+
+        # Use npm list to check dependencies
+      - name: Check installed dependencies
+        shell: pwsh
+        run: |
+          $dependencies = npm list --depth=0
+          Write-Host $dependencies  
