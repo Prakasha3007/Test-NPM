@@ -1,0 +1,21 @@
+name: NPM
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  call-reusable:
+    uses: ./.github/workflows/npmtask-reusable.yml
+    secrets:  
+      nexus_username: ${{ secrets.NEXUS_USERNAME }}  # Pass the secret username
+      nexus_password: ${{ secrets.NEXUS_PASSWORD }}  # Pass the secret password
+    with:
+      runsOn: windows-latest
+      command: "custom"
+      workingDir: "test project"
+      verbose: true
+      customCommand: "test"
+      customRegistry: "https://registry.npmjs.org/"
+      #customRegistry: "http://10.0.0.5:8081/repository/npm/"
